@@ -1,14 +1,11 @@
 package yatzy;
 
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 public enum ScoreType {
     ONES(p -> atLeastOneDiceWithValue(p, DiceValue.ONE), s -> sumOfDices(s, DiceValue.ONE.value())),
@@ -24,7 +21,7 @@ public enum ScoreType {
     SMALL_STRAIGHT(p -> p.stream().distinct().count() == 5 && p.stream().sorted().findFirst().get().equals(1) && p.stream().noneMatch(DiceValue.SIX.value()), s -> 30),
     LARGE_STRAIGHT(p -> p.stream().distinct().count() == 5 && p.stream().sorted().findFirst().get().equals(2), s -> 40),
     TWO_PAIRS(p -> p.stream().distinct().count() <= 3 && p.stream().distinct().count() > 1, s -> sumOfTopDices(s, 2) + sumOfTopDices(reduceByTopDices(s, 2), 2)),
-    CHANCE(p -> !p.isEmpty(), s -> s.stream().collect(Collectors.summingInt(Integer::intValue))),
+    CHANCE(p -> !p.isEmpty(), s -> s.stream().reduce(0, Integer::sum)),
     YAHTZEE(p -> p.stream().distinct().count() == 1, s -> 50);
 
     private final Predicate<List<Integer>> rule;
@@ -47,26 +44,27 @@ public enum ScoreType {
         return p.stream().anyMatch(diceValue.value());
     }
 
-    private static boolean requiredNumberOfDicesWithSameValue(List<Integer> p, int numberOfDices) {
-        return p.stream().collect(Collectors.groupingBy(Integer::intValue)).values().stream().anyMatch(list -> list.size() == numberOfDices);
+    private static boolean requiredNumberOfDicesWithSameValue(List<Integer> dices, int numberOfDices) {
+        return dices.stream().collect(Collectors.groupingBy(Integer::intValue)).values().stream().anyMatch(list -> list.size() == numberOfDices);
     }
 
-    private static Integer sumOfDices(List<Integer> s, Predicate<Integer> dicesOfInterest) {
-        return s.stream().filter(dicesOfInterest).collect(Collectors.summingInt(Integer::intValue));
+    private static Integer sumOfDices(List<Integer> dices, Predicate<Integer> diceFilter) {
+        return dices.stream().filter(diceFilter).reduce(0, Integer::sum);
     }
 
     private static Integer sumOfTopDices(List<Integer> dices, int numberOfDices) {
-        Map<Integer, Integer> grouped = Stream.of(dices.toArray(new Integer[dices.size()])).collect(Collectors.toMap(i -> i, j -> j, (i, j) -> i + j));
-        IntStream.Builder builder = IntStream.builder();
-        grouped.entrySet().forEach(c -> Stream.of(c.getValue()).filter(f -> f/c.getKey() >= numberOfDices).forEach(d -> builder.add(c.getKey())));
-        Integer topDice = (Integer) builder.build().boxed().collect(Collectors.toCollection(LinkedList::new)).descendingIterator().next();
-        return topDice * numberOfDices;
+        return dices.stream()
+                .collect(Collectors.groupingBy(Integer::intValue))
+                .entrySet()
+                .stream()
+                .filter(entry -> entry.getValue().size() >= numberOfDices)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toCollection(LinkedList::new))
+                .descendingIterator().next() * numberOfDices;
     }
 
     private static List<Integer> reduceByTopDices(List<Integer> dices, int numberOfDicesToRemove) {
-        Collections.sort(dices);
-        return dices.size() < numberOfDicesToRemove ? Collections.emptyList() : dices.subList(0, dices.size() - numberOfDicesToRemove);
-
+        return dices.stream().sorted().limit(dices.size() - numberOfDicesToRemove).collect(Collectors.toList());
     }
 
 }
